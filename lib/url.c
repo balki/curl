@@ -2394,12 +2394,18 @@ static CURLcode parse_proxy(struct Curl_easy *data,
   char *proxyuser = NULL;
   char *proxypasswd = NULL;
   char *host;
+  char *path = NULL;
   bool sockstype;
   CURLUcode uc;
   struct proxy_info *proxyinfo;
   CURLU *uhp = curl_url();
   CURLcode result = CURLE_OK;
   char *scheme = NULL;
+#ifdef USE_UNIX_SOCKETS
+  bool is_unix_proxy = FALSE;
+#endif
+
+  printf("Bala here proxy: %s\n", proxy);
 
   if(!uhp) {
     result = CURLE_OUT_OF_MEMORY;
@@ -2518,26 +2524,52 @@ static CURLcode parse_proxy(struct Curl_easy *data,
       conn->port = port;
   }
 
-  /* now, clone the proxy host name */
-#ifdef USE_UNIX_SOCKETS
-  if(proxytype == CURLPROXY_SOCKS5_HOSTNAME
-      && strncmp("unix/", proxy + 10, 5) == 0) { /* len("socks5h://") = 10 */
-      host = strdup(proxy + 10);
-      if(!host) {
-        result = CURLE_OUT_OF_MEMORY;
-        goto error;
-      }
-      Curl_safefree(proxyinfo->host.rawalloc);
-      proxyinfo->host.rawalloc = host;
-      proxyinfo->host.name = host;
+  /*
+  {
+    char *path = NULL;
+    uc = curl_url_get(uhp, CURLUPART_PATH, &path, CURLU_URLDECODE);
+    printf("Bala here path: %s\n", path);
+    printf("Bala here uc: %d\n", uc);
+
+    uc = curl_url_get(uhp, CURLUPART_HOST, &host, CURLU_URLDECODE);
+    printf("Bala here host: %s\n", host);
+    printf("Bala here uc: %d\n", uc);
+    exit(0);
+
   }
-  else {
-#endif
+  */
+
+  /* now, clone the proxy host name */
   uc = curl_url_get(uhp, CURLUPART_HOST, &host, CURLU_URLDECODE);
   if(uc) {
     result = CURLE_OUT_OF_MEMORY;
     goto error;
   }
+#ifdef USE_UNIX_SOCKETS
+  if(sockstype && strncmp("unix", host, 4) == 0) {
+    uc = curl_url_get(uhp, CURLUPART_PATH, &path, CURLU_URLDECODE);
+    if(uc) {
+      result = CURLE_OUT_OF_MEMORY;
+      goto error;
+    }
+    if(!(path[0]=='/' && path[1]=='\0')) {
+      is_unix_proxy = TRUE;
+      free(host);
+      host = aprintf("unix%s", path);
+      if(!host) {
+        result = CURLE_OUT_OF_MEMORY;
+        goto error;
+      }
+      printf("Bala here IS unix proxy\n");
+      Curl_safefree(proxyinfo->host.rawalloc);
+      proxyinfo->host.rawalloc = host;
+      proxyinfo->host.name = host;
+    }
+  }
+
+  if(!is_unix_proxy) {
+#endif
+  printf("Bala here NOT unix proxy\n");
   Curl_safefree(proxyinfo->host.rawalloc);
   proxyinfo->host.rawalloc = host;
   if(host[0] == '[') {
@@ -2556,6 +2588,7 @@ static CURLcode parse_proxy(struct Curl_easy *data,
   free(proxyuser);
   free(proxypasswd);
   free(scheme);
+  free(path);
   curl_url_cleanup(uhp);
   return result;
 }
@@ -3372,6 +3405,7 @@ static CURLcode resolve_server(struct Curl_easy *data,
 
   DEBUGASSERT(conn);
   DEBUGASSERT(data);
+  printf("Bala here\n");
   /*************************************************************
    * Resolve the name of the server or proxy
    *************************************************************/
