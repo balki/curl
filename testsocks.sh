@@ -6,16 +6,20 @@ mkdir -p $state_dir/{dirlist,log}
 touch $state_dir/dirlist/{foo,bar}
 
 socksd=/home/balki/projects/curl/tests/server/socksd
+curlbin=/home/balki/projects/curl/w.tmp/root/bin/curl
 
 cd $state_dir/dirlist
 python3 -m http.server 8088 &> ../py.log &
 sleep 2
 
 cd $state_dir
-$socksd --portfile socksdport &
+# $socksd --portfile socksdport &
+
+$socksd --unix-socket socksd.sock &
 
 runcurl() {
-  curl -s -x "socks5h://127.0.0.1:$(cat socksdport)" "http://127.0.0.1:8088"
+  # $curlbin -s -x "socks5h://127.0.0.1:$(cat socksdport)" "http://127.0.0.1:8088"
+  $curlbin -s -x "socks5h://unix$state_dir/socksd.sock" "http://127.0.0.1:8088"
 }
 
 diff <(runcurl) - << EOR && echo "test passed"

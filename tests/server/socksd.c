@@ -785,7 +785,11 @@ static bool incoming(curl_socket_t listenfd)
 }
 
 static curl_socket_t sockdaemon(curl_socket_t sock,
-                                unsigned short *listenport)
+                                unsigned short *listenport
+#ifdef USE_UNIX_SOCKETS
+        ,const char* unix_socket
+#endif
+        )
 {
   /* passive daemon style */
   srvr_sockaddr_union_t listener;
@@ -851,10 +855,11 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
       listener.sa6.sin6_addr = in6addr_any;
       listener.sa6.sin6_port = htons(*listenport);
       rc = bind(sock, &listener.sa, sizeof(listener.sa6));
+      break;
 #endif
 #ifdef USE_UNIX_SOCKETS
     case AF_UNIX:
-      /* TODO */
+    rc = bind_unix_socket(sock, unix_socket, &listener);
 #endif
   }
 
@@ -866,7 +871,11 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
     return CURL_SOCKET_BAD;
   }
 
-  if(!*listenport) {
+  if(!*listenport 
+#ifdef USE_UNIX_SOCKETS
+          && !unix_socket
+#endif
+    ) {
     /* The system was supposed to choose a port number, figure out which
        port we actually got and update the listener port value with it. */
     curl_socklen_t la_size;
@@ -880,10 +889,8 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
         la_size = sizeof(localaddr.sa6);
         break;
 #endif
-#ifdef USE_UNIX_SOCKETS
-      case AF_UNIX:
-        /* TODO */
-#endif
+      default:
+        break;
     }
 
     memset(&localaddr.sa, 0, (size_t)la_size);
@@ -1062,20 +1069,7 @@ int main(int argc, char *argv[])
 
   install_signal_handlers(false);
 
-  switch(socket_domain) {
-    case AF_INET:
-      sock = socket(AF_INET, SOCK_STREAM, 0);
-      break;
-#ifdef ENABLE_IPV6
-    case AF_INET6:
-      sock = socket(AF_INET6, SOCK_STREAM, 0);
-      break;
-#endif
-#ifdef USE_UNIX_SOCKETS
-    case AF_UNIX:
-      /* TODO */
-#endif
-  }
+  sock = socket(socket_domain, SOCK_STREAM, 0);
 
   if(CURL_SOCKET_BAD == sock) {
     error = SOCKERRNO;
@@ -1086,7 +1080,11 @@ int main(int argc, char *argv[])
 
   {
     /* passive daemon style */
-    sock = sockdaemon(sock, &port);
+    sock = sockdaemon(sock, &port
+#ifdef USE_UNIX_SOCKETS
+            ,unix_socket
+#endif
+            );
     if(CURL_SOCKET_BAD == sock) {
       goto socks5_cleanup;
     }
