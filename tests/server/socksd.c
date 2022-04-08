@@ -96,6 +96,7 @@
 #endif
 
 #define DEFAULT_PORT 8905
+#define DEFAULT_UNIX_SOCKET "socksd.sock"
 
 #ifndef DEFAULT_LOGFILE
 #define DEFAULT_LOGFILE "log/socksd.log"
@@ -143,10 +144,7 @@ const char *serverlogfile = DEFAULT_LOGFILE;
 const char *reqlogfile = DEFAULT_REQFILE;
 static const char *configfile = DEFAULT_CONFIG;
 
-#ifdef ENABLE_IPV6
-static bool use_ipv6 = FALSE;
-#endif
-static const char *ipv_inuse = "IPv4";
+static const char *socket_type = "IPv4";
 static unsigned short port = DEFAULT_PORT;
 
 static void resetdefaults(void)
@@ -176,6 +174,16 @@ static unsigned short shortval(char *value)
   unsigned long num = strtoul(value, NULL, 10);
   return num & 0xffff;
 }
+
+static enum {
+  socket_domain_inet = AF_INET
+#ifdef ENABLE_IPV6
+  , socket_domain_inet6 = AF_INET6
+#endif
+#ifdef USE_UNIX_SOCKETS
+  , socket_domain_unix = AF_UNIX
+#endif
+} socket_domain = AF_INET;
 
 static void getconfig(void)
 {
@@ -828,24 +836,28 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
   /* When the specified listener port is zero, it is actually a
      request to let the system choose a non-zero available port. */
 
+  switch(socket_domain) {
+    case AF_INET:
+      memset(&listener.sa4, 0, sizeof(listener.sa4));
+      listener.sa4.sin_family = AF_INET;
+      listener.sa4.sin_addr.s_addr = INADDR_ANY;
+      listener.sa4.sin_port = htons(*listenport);
+      rc = bind(sock, &listener.sa, sizeof(listener.sa4));
+      break;
 #ifdef ENABLE_IPV6
-  if(!use_ipv6) {
+    case AF_INET6:
+      memset(&listener.sa6, 0, sizeof(listener.sa6));
+      listener.sa6.sin6_family = AF_INET6;
+      listener.sa6.sin6_addr = in6addr_any;
+      listener.sa6.sin6_port = htons(*listenport);
+      rc = bind(sock, &listener.sa, sizeof(listener.sa6));
 #endif
-    memset(&listener.sa4, 0, sizeof(listener.sa4));
-    listener.sa4.sin_family = AF_INET;
-    listener.sa4.sin_addr.s_addr = INADDR_ANY;
-    listener.sa4.sin_port = htons(*listenport);
-    rc = bind(sock, &listener.sa, sizeof(listener.sa4));
-#ifdef ENABLE_IPV6
+#ifdef USE_UNIX_SOCKETS
+    case AF_UNIX:
+      /* TODO */
+#endif
   }
-  else {
-    memset(&listener.sa6, 0, sizeof(listener.sa6));
-    listener.sa6.sin6_family = AF_INET6;
-    listener.sa6.sin6_addr = in6addr_any;
-    listener.sa6.sin6_port = htons(*listenport);
-    rc = bind(sock, &listener.sa, sizeof(listener.sa6));
-  }
-#endif /* ENABLE_IPV6 */
+
   if(rc) {
     error = SOCKERRNO;
     logmsg("Error binding socket on port %hu: (%d) %s",
@@ -859,14 +871,21 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
        port we actually got and update the listener port value with it. */
     curl_socklen_t la_size;
     srvr_sockaddr_union_t localaddr;
+    switch(socket_domain) {
+      case AF_INET:
+        la_size = sizeof(localaddr.sa4);
+        break;
 #ifdef ENABLE_IPV6
-    if(!use_ipv6)
+      case AF_INET6:
+        la_size = sizeof(localaddr.sa6);
+        break;
 #endif
-      la_size = sizeof(localaddr.sa4);
-#ifdef ENABLE_IPV6
-    else
-      la_size = sizeof(localaddr.sa6);
+#ifdef USE_UNIX_SOCKETS
+      case AF_UNIX:
+        /* TODO */
 #endif
+    }
+
     memset(&localaddr.sa, 0, (size_t)la_size);
     if(getsockname(sock, &localaddr.sa, &la_size) < 0) {
       error = SOCKERRNO;
@@ -920,6 +939,7 @@ int main(int argc, char *argv[])
   int wroteportfile = 0;
   const char *pidname = ".socksd.pid";
   const char *portname = NULL; /* none by default */
+  const char *unix_socket = DEFAULT_UNIX_SOCKET;
   bool juggle_again;
   int error;
   int arg = 1;
@@ -972,18 +992,37 @@ int main(int argc, char *argv[])
     }
     else if(!strcmp("--ipv6", argv[arg])) {
 #ifdef ENABLE_IPV6
-      ipv_inuse = "IPv6";
-      use_ipv6 = TRUE;
+      socket_domain = AF_INET6;
+      socket_type = "IPv6";
 #endif
       arg++;
     }
     else if(!strcmp("--ipv4", argv[arg])) {
       /* for completeness, we support this option as well */
 #ifdef ENABLE_IPV6
-      ipv_inuse = "IPv4";
-      use_ipv6 = FALSE;
+      socket_type = "IPv4";
 #endif
       arg++;
+    }
+    else if(!strcmp("--unix-socket", argv[arg])) {
+      arg++;
+      if(argc>arg) {
+#ifdef USE_UNIX_SOCKETS
+        srvr_sockaddr_union_t me;
+        unix_socket = argv[arg];
+        if(strlen(unix_socket) >= sizeof(me.sau.sun_path)) {
+          fprintf(stderr, "sws: socket path must be shorter than %zu chars\n",
+              sizeof(me.sau.sun_path));
+          return 0;
+        }
+        socket_domain = AF_UNIX;
+        socket_type = "unix";
+        /*
+        location_str = unix_socket;
+        */
+#endif
+        arg++;
+      }
     }
     else if(!strcmp("--port", argv[arg])) {
       arg++;
@@ -1023,14 +1062,20 @@ int main(int argc, char *argv[])
 
   install_signal_handlers(false);
 
+  switch(socket_domain) {
+    case AF_INET:
+      sock = socket(AF_INET, SOCK_STREAM, 0);
+      break;
 #ifdef ENABLE_IPV6
-  if(!use_ipv6)
+    case AF_INET6:
+      sock = socket(AF_INET6, SOCK_STREAM, 0);
+      break;
 #endif
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-#ifdef ENABLE_IPV6
-  else
-    sock = socket(AF_INET6, SOCK_STREAM, 0);
+#ifdef USE_UNIX_SOCKETS
+    case AF_UNIX:
+      /* TODO */
 #endif
+  }
 
   if(CURL_SOCKET_BAD == sock) {
     error = SOCKERRNO;
@@ -1048,7 +1093,7 @@ int main(int argc, char *argv[])
     msgsock = CURL_SOCKET_BAD; /* no stream socket yet */
   }
 
-  logmsg("Running %s version", ipv_inuse);
+  logmsg("Running %s version", socket_type);
   logmsg("Listening on port %hu", port);
 
   wrotepidfile = write_pidfile(pidname);
