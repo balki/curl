@@ -855,7 +855,7 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
       listener.sa6.sin6_port = htons(*listenport);
       rc = bind(sock, &listener.sa, sizeof(listener.sa6));
       break;
-#endif
+#endif /* ENABLE_IPV6 */
 #ifdef USE_UNIX_SOCKETS
     case AF_UNIX:
     rc = bind_unix_socket(sock, unix_socket, &listener.sau);
@@ -1018,11 +1018,11 @@ int main(int argc, char *argv[])
       arg++;
       if(argc>arg) {
 #ifdef USE_UNIX_SOCKETS
-        srvr_sockaddr_union_t me;
+        struct sockaddr_un sau;
         unix_socket = argv[arg];
-        if(strlen(unix_socket) >= sizeof(me.sau.sun_path)) {
-          fprintf(stderr, "sws: socket path must be shorter than %zu chars\n",
-              sizeof(me.sau.sun_path));
+        if(strlen(unix_socket) >= sizeof(sau.sun_path)) {
+          fprintf(stderr, "socksd: socket path must be shorter than %zu chars\n",
+              sizeof(sau.sun_path));
           return 0;
         }
         socket_domain = AF_UNIX;
@@ -1096,6 +1096,12 @@ int main(int argc, char *argv[])
   }
 
   logmsg("Running %s version", socket_type);
+
+#ifdef USE_UNIX_SOCKETS
+  if(socket_domain == AF_UNIX)
+      logmsg("Listening on unix socket %s", unix_socket);
+  else
+#endif
   logmsg("Listening on port %hu", port);
 
   wrotepidfile = write_pidfile(pidname);
@@ -1124,9 +1130,8 @@ socks5_cleanup:
 
 #ifdef USE_UNIX_SOCKETS
   if(unlink_socket && socket_domain == AF_UNIX) {
-      int rc;
-      rc = unlink(unix_socket);
-      logmsg("unlink(%s) = %d (%s)", unix_socket, rc, strerror(rc));
+      error = unlink(unix_socket);
+      logmsg("unlink(%s) = %d (%s)", unix_socket, error, strerror(error));
   }
 #endif
 
