@@ -87,7 +87,7 @@ void restore_signal_handlers(bool keep_sigalrm);
 #error "USE_UNIX_SOCKETS defined but not HAVE_SYS_UN_H"
 #endif /* HAVE_SYS_UN_H */
 
-int bind_unix_socket(curl_socket_t sock, const char* unix_socket, 
+int bind_unix_socket(curl_socket_t sock, const char *unix_socket,
         struct sockaddr_un *sau);
 #endif  /* USE_UNIX_SOCKETS */
 

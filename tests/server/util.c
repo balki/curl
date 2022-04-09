@@ -812,7 +812,7 @@ void restore_signal_handlers(bool keep_sigalrm)
 
 #ifdef USE_UNIX_SOCKETS
 
-int bind_unix_socket(curl_socket_t sock, const char* unix_socket, 
+int bind_unix_socket(curl_socket_t sock, const char *unix_socket,
         struct sockaddr_un *sau) {
     int error;
     int rc;

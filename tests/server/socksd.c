@@ -786,7 +786,7 @@ static bool incoming(curl_socket_t listenfd)
 static curl_socket_t sockdaemon(curl_socket_t sock,
                                 unsigned short *listenport
 #ifdef USE_UNIX_SOCKETS
-        ,const char* unix_socket
+        , const char *unix_socket
 #endif
         )
 {
@@ -870,7 +870,7 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
     return CURL_SOCKET_BAD;
   }
 
-  if(!*listenport 
+  if(!*listenport
 #ifdef USE_UNIX_SOCKETS
           && !unix_socket
 #endif
@@ -1021,7 +1021,8 @@ int main(int argc, char *argv[])
         struct sockaddr_un sau;
         unix_socket = argv[arg];
         if(strlen(unix_socket) >= sizeof(sau.sun_path)) {
-          fprintf(stderr, "socksd: socket path must be shorter than %zu chars\n",
+          fprintf(stderr,
+                  "socksd: socket path must be shorter than %zu chars\n",
               sizeof(sau.sun_path));
           return 0;
         }
@@ -1083,7 +1084,7 @@ int main(int argc, char *argv[])
     /* passive daemon style */
     sock = sockdaemon(sock, &port
 #ifdef USE_UNIX_SOCKETS
-            ,unix_socket
+            , unix_socket
 #endif
             );
     if(CURL_SOCKET_BAD == sock) {
@@ -1130,8 +1131,8 @@ socks5_cleanup:
 
 #ifdef USE_UNIX_SOCKETS
   if(unlink_socket && socket_domain == AF_UNIX) {
-      error = unlink(unix_socket);
-      logmsg("unlink(%s) = %d (%s)", unix_socket, error, strerror(error));
+    error = unlink(unix_socket);
+    logmsg("unlink(%s) = %d (%s)", unix_socket, error, strerror(error));
   }
 #endif
 
