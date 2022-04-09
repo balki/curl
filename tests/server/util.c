@@ -813,13 +813,14 @@ void restore_signal_handlers(bool keep_sigalrm)
 #ifdef USE_UNIX_SOCKETS
 
 int bind_unix_socket(curl_socket_t sock, const char* unix_socket, 
-        srvr_sockaddr_union_t *me) {
+        struct sockaddr_un *sau) {
     int error;
     int rc;
-    memset(&me->sau, 0, sizeof(me->sau));
-    me->sau.sun_family = AF_UNIX;
-    strncpy(me->sau.sun_path, unix_socket, sizeof(me->sau.sun_path) - 1);
-    rc = bind(sock, &me->sa, sizeof(me->sau));
+
+    memset(sau, 0, sizeof(struct sockaddr_un));
+    sau->sun_family = AF_UNIX;
+    strncpy(sau->sun_path, unix_socket, sizeof(sau->sun_path) - 1);
+    rc = bind(sock, (struct sockaddr*)sau, sizeof(struct sockaddr_un));
     if(0 != rc && errno == EADDRINUSE) {
       struct_stat statbuf;
       /* socket already exists. Perhaps it is stale? */
@@ -831,7 +832,7 @@ int bind_unix_socket(curl_socket_t sock, const char* unix_socket,
         return rc;
       }
       /* check whether the server is alive */
-      rc = connect(unixfd, &me->sa, sizeof(me->sau));
+      rc = connect(unixfd, (struct sockaddr*)sau, sizeof(struct sockaddr_un));
       error = errno;
       sclose(unixfd);
       if(ECONNREFUSED != error) {
@@ -866,7 +867,7 @@ int bind_unix_socket(curl_socket_t sock, const char* unix_socket,
         return rc;
       }
       /* stale socket is gone, retry bind */
-      rc = bind(sock, &me->sa, sizeof(me->sau));
+      rc = bind(sock, (struct sockaddr*)sau, sizeof(struct sockaddr_un));
     }
     return rc;
 }

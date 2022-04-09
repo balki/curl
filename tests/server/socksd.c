@@ -96,7 +96,6 @@
 #endif
 
 #define DEFAULT_PORT 8905
-#define DEFAULT_UNIX_SOCKET "socksd.sock"
 
 #ifndef DEFAULT_LOGFILE
 #define DEFAULT_LOGFILE "log/socksd.log"
@@ -859,7 +858,7 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
 #endif
 #ifdef USE_UNIX_SOCKETS
     case AF_UNIX:
-    rc = bind_unix_socket(sock, unix_socket, &listener);
+    rc = bind_unix_socket(sock, unix_socket, &listener.sau);
 #endif
   }
 
@@ -946,10 +945,14 @@ int main(int argc, char *argv[])
   int wroteportfile = 0;
   const char *pidname = ".socksd.pid";
   const char *portname = NULL; /* none by default */
-  const char *unix_socket = DEFAULT_UNIX_SOCKET;
   bool juggle_again;
   int error;
   int arg = 1;
+
+#ifdef USE_UNIX_SOCKETS
+  const char *unix_socket = NULL;
+  bool unlink_socket = false;
+#endif
 
   while(argc>arg) {
     if(!strcmp("--version", argv[arg])) {
@@ -1024,9 +1027,6 @@ int main(int argc, char *argv[])
         }
         socket_domain = AF_UNIX;
         socket_type = "unix";
-        /*
-        location_str = unix_socket;
-        */
 #endif
         arg++;
       }
@@ -1052,6 +1052,7 @@ int main(int argc, char *argv[])
            " --reqfile [file]\n"
            " --ipv4\n"
            " --ipv6\n"
+           " --unix-socket [file]\n"
            " --bindonly\n"
            " --port [port]\n");
       return 0;
@@ -1088,6 +1089,9 @@ int main(int argc, char *argv[])
     if(CURL_SOCKET_BAD == sock) {
       goto socks5_cleanup;
     }
+#ifdef USE_UNIX_SOCKETS
+    unlink_socket = true;
+#endif
     msgsock = CURL_SOCKET_BAD; /* no stream socket yet */
   }
 
@@ -1117,6 +1121,14 @@ socks5_cleanup:
 
   if(sock != CURL_SOCKET_BAD)
     sclose(sock);
+
+#ifdef USE_UNIX_SOCKETS
+  if(unlink_socket && socket_domain == AF_UNIX) {
+      int rc;
+      rc = unlink(unix_socket);
+      logmsg("unlink(%s) = %d (%s)", unix_socket, rc, strerror(rc));
+  }
+#endif
 
   if(wrotepidfile)
     unlink(pidname);

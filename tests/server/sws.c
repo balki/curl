@@ -2066,7 +2066,7 @@ int main(int argc, char *argv[])
 #endif /* ENABLE_IPV6 */
 #ifdef USE_UNIX_SOCKETS
   case AF_UNIX:
-    rc = bind_unix_socket(sock, unix_socket, &me);
+    rc = bind_unix_socket(sock, unix_socket, &me.sau);
 #endif /* USE_UNIX_SOCKETS */
   }
   if(0 != rc) {

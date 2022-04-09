@@ -2,7 +2,7 @@
 
 state_dir=/tmp/socksdtest
 rm -rf $state_dir
-mkdir -p $state_dir/{dirlist,log}
+mkdir -p $state_dir/{dirlist,stateunix/log,statetcp/log}
 touch $state_dir/dirlist/{foo,bar}
 
 socksd=/home/balki/projects/curl/tests/server/socksd
@@ -12,17 +12,23 @@ cd $state_dir/dirlist
 python3 -m http.server 8088 &> ../py.log &
 sleep 2
 
-cd $state_dir
-# $socksd --portfile socksdport &
-
+cd $state_dir/stateunix
 $socksd --unix-socket socksd.sock &
 
-runcurl() {
-  # $curlbin -s -x "socks5h://127.0.0.1:$(cat socksdport)" "http://127.0.0.1:8088"
-  $curlbin -s -x "socks5h://unix$state_dir/socksd.sock" "http://127.0.0.1:8088"
+cd $state_dir/statetcp
+$socksd --port 0 --portfile socksdport &
+
+cd $state_dir
+
+runcurlunix() {
+    $curlbin -s -x "socks5h://unix$state_dir/stateunix/socksd.sock" "http://127.0.0.1:8088"
 }
 
-diff <(runcurl) - << EOR && echo "test passed"
+runcurltcp() {
+    $curlbin -s -x "socks5h://127.0.0.1:$(cat $state_dir/statetcp/socksdport)" "http://127.0.0.1:8088"
+}
+
+cat << EOM > expected
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
 <html>
 <head>
@@ -39,6 +45,10 @@ diff <(runcurl) - << EOR && echo "test passed"
 <hr>
 </body>
 </html>
-EOR
+EOM
+
+diff <(runcurlunix) expected && echo "unix test passed"
+diff <(runcurltcp) expected && echo "tcp test passed"
 
 pkill -P $$
+# pstree -p $$
