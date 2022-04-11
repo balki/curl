@@ -5288,7 +5288,7 @@ sub startservers {
         }
         elsif($what eq "socks5unix") {
             if(!$run{'socks5unix'}) {
-                ($pid, $pid2, $SOCKSPORT) = runsocksserver("2", $verbose, "", "unix");
+                ($pid, $pid2) = runsocksserver("2", $verbose, "", "unix");
                 if($pid <= 0) {
                     return "failed starting socks5unix server";
                 }
